@@ -2,6 +2,7 @@ import './style.css'
 import p5 from 'p5'
 
 const INNER_RADIUS = 25
+const OUTER_RADIUS = 150 // this is added to inner radius
 const TIME_LIMIT = 60000
 const BREATH_RHYTHM = 10000 //ms
 
@@ -29,7 +30,7 @@ const SCORE_VALUES = [
   },
   {
     text: "Good",
-    threshold: 0.016,
+    threshold: 0.022,
     points: 300,
   },
   {
@@ -39,7 +40,7 @@ const SCORE_VALUES = [
   },
 ] as const
 
-let comboScore = 0;
+let combo: number[] = [];
 let totalScore = 0;
 
 const colours = {
@@ -60,6 +61,8 @@ const palette = {
   timeline: colours.black,
   timelineDot: colours.peach,
 
+  outerCircle: colours.black,
+
   comboBarStroke: colours.black,
   comboBarFill: colours.red,
 
@@ -73,7 +76,7 @@ new p5(p => {
 
   p.setup = () => {
 
-    p.createCanvas(innerWidth, innerHeight)
+    p.createCanvas(innerHeight * 9 / 16, innerHeight)
     p.background(palette.background)
     p.noStroke()
     p.textAlign(p.CENTER)
@@ -152,13 +155,13 @@ function drawProgressBar(p: p5) {
 let comboBarHeight = 0
 function drawComboBar(p: p5) {
 
-  const x = p.width - 125
+  const x = p.width - 100
   const y = p.height * 0.33
-  const w = 50
+  const w = -30
   const h = p.height * 0.33
 
   const maxPossibleScore = 2 * (TIME_LIMIT / BREATH_RHYTHM) * SCORE_VALUES[0].points
-  const targetHeight = p.map(comboScore, 0, maxPossibleScore, 0, -h)
+  const targetHeight = p.map(combo.reduce((p, c) => (p + c), 0), 0, maxPossibleScore, 0, -h)
   comboBarHeight = p.lerp(comboBarHeight, targetHeight, 0.05)
 
   p.stroke(palette.comboBarFill)
@@ -166,7 +169,7 @@ function drawComboBar(p: p5) {
   p.rect(x, y + h, w, comboBarHeight)
 
   p.noFill()
-  p.strokeWeight(2)
+  p.strokeWeight(1)
   p.stroke(palette.comboBarStroke)
   p.rect(x, y, w, h)
 
@@ -180,11 +183,14 @@ function drawBreathingCircle(p: p5, x: number, y: number, breathValue: number, c
   p.noStroke()
   p.fill(colour)
 
-  p.ellipse(x, y, INNER_RADIUS + 150 * breathValue)
+  p.ellipse(x, y, INNER_RADIUS + OUTER_RADIUS * breathValue)
+
+  p.stroke(palette.outerCircle)
+  p.noFill()
+  p.ellipse(x, y, INNER_RADIUS + OUTER_RADIUS)
 
   p.stroke(palette.background)
   p.strokeWeight(2)
-  p.noFill()
   p.ellipse(x, y, INNER_RADIUS)
 
   p.pop()
@@ -195,6 +201,8 @@ type ScoreText = {
   string: string,
   position: p5.Vector,
   velocity: p5.Vector,
+  color?: number[],
+  comboLength?: number,
 }
 const scoreTexts: ScoreText[] = []
 
@@ -207,9 +215,9 @@ function submitScore(p: p5, delta: number) {
   }
 
   if (score.points === 0) {
-    comboScore = 0
+    combo = []
   } else {
-    comboScore += score.points
+    combo.push(score.points)
   }
 
   totalScore += score.points
@@ -220,7 +228,41 @@ function submitScore(p: p5, delta: number) {
     velocity: p.createVector(p.random(-2, 2), p.random(-10, -20))
   })
 
+  if (
+    combo.length === 3
+    || combo.length > 4
+  ) {
+    setTimeout(() => {
+
+      scoreTexts.push({
+        string: `${combo.length}x Combo!!`,
+        position: p.createVector(p.width - 150, p.height * 0.369),
+        velocity: p.createVector(p.random(-2, 2), p.random(-15, -26)),
+        color: combo.length > 4 ? getRandomBrightColour() : undefined,
+        comboLength: combo.length
+      })
+
+    }, 100)
+
+  }
+
 }
+
+function getRandomBrightColour() {
+
+  const variance = 200
+
+  let pigment = variance * 3
+  const colour = [255 - variance, 255 - variance, 255 - variance]
+  for (let i = 0; i < 3; i++) {
+    const p = (i === 3) ? pigment : Math.floor(pigment * Math.random())
+    pigment -= p
+    colour[i] += p
+  }
+  return colour.sort(() => Math.random())
+
+}
+
 
 function processScoreTexts() {
 
@@ -240,11 +282,18 @@ function processScoreTexts() {
 function drawScoreTexts(p: p5) {
 
   p.noStroke()
-  p.fill(palette.scoreText)
+  p.stroke(palette.scoreText)
   p.textSize(32)
   p.textStyle(p.BOLDITALIC)
 
-  for (const { string, position } of scoreTexts) {
+  for (const { string, position, color, comboLength } of scoreTexts) {
+    p.fill(color ?? palette.scoreText)
+    if (comboLength) {
+      p.strokeWeight(1)
+      if (comboLength > 6) {
+        p.fill(getRandomBrightColour())
+      }
+    }
     p.text(string, position.x, position.y)
   }
 
