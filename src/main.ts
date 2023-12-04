@@ -263,9 +263,9 @@ function drawBreathingCircle(p: p5, x: number, y: number, breathValue: number) {
 
   // p.ellipse(x, y, INNER_RADIUS + OUTER_RADIUS * breathValue)
   const targetRadius = INNER_RADIUS + OUTER_RADIUS * breathValue
-  for (let r = INNER_RADIUS; r < targetRadius; r++) {
-    p.stroke(p.lerpColor(innerColour, outercolour, (r - INNER_RADIUS) / (targetRadius - INNER_RADIUS)))
-    p.ellipse(x, y, r)
+  for (let radius = INNER_RADIUS; radius < targetRadius; radius++) {
+    p.stroke(p.lerpColor(innerColour, outercolour, (radius - INNER_RADIUS) / (targetRadius - INNER_RADIUS)))
+    p.ellipse(x, y, radius)
   }
 
   p.stroke(palette.outerCircle)
