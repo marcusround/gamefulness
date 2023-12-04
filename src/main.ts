@@ -49,26 +49,35 @@ const colours = {
   red: [192, 116, 103],
 
   white: [255, 255, 255],
-  black: [10, 10, 17],
+  black: [100, 100, 167],
+
+  green: [176, 225, 199],
+  blue: [176, 199, 225]
+
 }
 
 const palette = {
 
   background: colours.lightblue,
-  breathIn: colours.peach,
-  breathOut: colours.red,
+  breathCircleA: colours.green,
+  breathCircleB: colours.blue,
 
   timeline: colours.black,
-  timelineDot: colours.peach,
+  timelineDot: colours.green,
 
   outerCircle: colours.black,
 
   comboBarStroke: colours.black,
-  comboBarFill: colours.red,
+  comboBarFill: colours.green,
 
   scoreText: colours.black,
 
-} as const
+}
+
+
+let gameStarted = false
+let gameEnded = false
+let gameStartedMS = 0
 
 new p5(p => {
 
@@ -88,15 +97,23 @@ new p5(p => {
 
   p.draw = () => {
 
-    const ms = p.millis()
-
     p.background(palette.background)
 
-    const breathTimer = ((p.TAU * ms) / BREATH_RHYTHM)
-    breathValue = 0.50 + 0.5 * p.sin(breathTimer)
+    // if (gameStarted === false) { drawStartGameScreen(p); return }
+    if (gameEnded) { drawEndGameScreen(p); return }
+
+    const ms = p.millis() - gameStartedMS
+    if (ms > TIME_LIMIT) { drawEndGameScreen(p); return }
+
+    doScreenShake(p)
+
+    // drawHelpText(p)
+
+    const breathTimer = gameStarted === false ? 0 : ((p.TAU * ms) / BREATH_RHYTHM)
+    breathValue = 1 - (0.50 + 0.5 * p.cos(breathTimer))
     const breathDirection = (((ms + BREATH_RHYTHM / 4) % BREATH_RHYTHM) < (BREATH_RHYTHM / 2)) ? "in" : "out"
 
-    drawBreathingCircle(p, p.width * 0.5, p.height * 0.369, breathValue, (breathDirection === "in") ? palette.breathIn : palette.breathOut)
+    drawBreathingCircle(p, p.width * 0.5, p.height * 0.5, breathValue)
 
     processScoreTexts()
     drawScoreTexts(p)
@@ -111,10 +128,16 @@ new p5(p => {
   }
 
   // Only allow one attempt per breath
-  let hasAttemptedTakeBreath = false
-  let hasAttemptedReleaseBreath = false
+  // Starting with these set to true is a hacky way to stop first click counting as a breath
+  let hasAttemptedTakeBreath = true
+  let hasAttemptedReleaseBreath = true
 
   p.mousePressed = () => {
+
+    if (gameStarted === false) {
+      gameStarted = true
+      gameStartedMS = p.millis()
+    }
 
     if (hasAttemptedTakeBreath || isInTakeBreathPhase() === false) { return }
     hasAttemptedTakeBreath = true
@@ -140,33 +163,73 @@ new p5(p => {
 
 })
 
+function drawHelpText(p: p5) {
+
+  p.fill(palette.scoreText)
+  p.noStroke()
+  p.textAlign(p.CENTER)
+  p.textStyle(p.ITALIC)
+  p.textSize(12)
+  p.text("Press & hold mouse to take in breath.\nRelease mouse to release breath.", p.width * 0.5, 60)
+
+}
+
+function drawEndGameScreen(p: p5) {
+
+  p.background(palette.background)
+  p.fill(palette.scoreText)
+  p.noStroke()
+  p.textSize(32)
+  p.textStyle(p.NORMAL)
+  p.textAlign(p.CENTER)
+  p.text(`Final Score: ${totalScore}`, p.width * 0.5, p.height * 0.5)
+
+}
+
+let screenShake = 0
+let screenShakeSustain = 0.95
+function doScreenShake(p: p5) {
+
+  p.translate(p.random(-screenShake, screenShake), p.random(-screenShake, screenShake))
+
+  if (screenShake > 0.5) {
+    screenShake = p.max(screenShake * (screenShakeSustain + p.pow(1 - screenShakeSustain, 1.4)), 0)
+  } else {
+    screenShake = 0
+  }
+
+}
+
 function drawProgressBar(p: p5) {
 
   p.strokeWeight(2)
   p.stroke(palette.timeline)
   p.line(100, p.height - 100, p.width - 100, p.height - 100)
-  p.noStroke()
+  // p.noStroke()
+  p.strokeWeight(1)
   p.fill(palette.timelineDot)
 
-  p.circle(p.map(p.millis(), 0, TIME_LIMIT, 100, p.width - 100, true), p.height - 100, 12)
+  const progress = gameStarted ? p.millis() - gameStartedMS : 0
+
+  p.circle(p.map(progress, 0, TIME_LIMIT, 100, p.width - 100, true), p.height - 100, 12)
 
 }
 
-let comboBarHeight = 0
+let comboBarFullness = 0
 function drawComboBar(p: p5) {
 
-  const x = p.width - 100
-  const y = p.height * 0.33
-  const w = -30
-  const h = p.height * 0.33
+  const x = 100
+  const y = 100
+  const w = p.width - 200
+  const h = 25
 
   const maxPossibleScore = 2 * (TIME_LIMIT / BREATH_RHYTHM) * SCORE_VALUES[0].points
-  const targetHeight = p.map(combo.reduce((p, c) => (p + c), 0), 0, maxPossibleScore, 0, -h)
-  comboBarHeight = p.lerp(comboBarHeight, targetHeight, 0.05)
+  const targetFullness = p.map(combo.reduce((p, c) => (p + c), 0), 0, maxPossibleScore, 0, w)
+  comboBarFullness = p.lerp(comboBarFullness, targetFullness, 0.05)
 
-  p.stroke(palette.comboBarFill)
+  p.fill(shakeColour(p, palette.comboBarFill))
   p.noStroke()
-  p.rect(x, y + h, w, comboBarHeight)
+  p.rect(x, y, comboBarFullness, h)
 
   p.noFill()
   p.strokeWeight(1)
@@ -175,22 +238,43 @@ function drawComboBar(p: p5) {
 
 }
 
+function shakeColour(p: p5, color: number[]) {
+  return p.lerpColor(p.color(color), p.color(getRandomBrightColour()), screenShake / 50)
+}
 
-function drawBreathingCircle(p: p5, x: number, y: number, breathValue: number, colour: number[]) {
+
+function drawBreathingCircle(p: p5, x: number, y: number, breathValue: number) {
+
+  let { breathCircleA, breathCircleB } = palette
 
   p.push()
 
+  p.fill(breathCircleA)
   p.noStroke()
-  p.fill(colour)
+  p.ellipse(x, y, INNER_RADIUS)
 
-  p.ellipse(x, y, INNER_RADIUS + OUTER_RADIUS * breathValue)
+  p.noFill()
+  p.strokeWeight(1)
+  p.stroke(breathCircleA)
+
+
+  const innerColour = shakeColour(p, breathCircleA)
+  const outercolour = shakeColour(p, breathCircleB)
+
+  // p.ellipse(x, y, INNER_RADIUS + OUTER_RADIUS * breathValue)
+  const targetRadius = INNER_RADIUS + OUTER_RADIUS * breathValue
+  for (let r = INNER_RADIUS; r < targetRadius; r++) {
+    p.stroke(p.lerpColor(innerColour, outercolour, (r - INNER_RADIUS) / (targetRadius - INNER_RADIUS)))
+    p.ellipse(x, y, r)
+  }
 
   p.stroke(palette.outerCircle)
   p.noFill()
   p.ellipse(x, y, INNER_RADIUS + OUTER_RADIUS)
 
-  p.stroke(palette.background)
-  p.strokeWeight(2)
+  p.stroke(palette.outerCircle)
+  p.fill(palette.background)
+  p.strokeWeight(1)
   p.ellipse(x, y, INNER_RADIUS)
 
   p.pop()
@@ -201,7 +285,7 @@ type ScoreText = {
   string: string,
   position: p5.Vector,
   velocity: p5.Vector,
-  color?: number[],
+  color?: number[] | "random",
   comboLength?: number,
 }
 const scoreTexts: ScoreText[] = []
@@ -220,13 +304,16 @@ function submitScore(p: p5, delta: number) {
     combo.push(score.points)
   }
 
-  totalScore += score.points
+  totalScore += Math.floor((score.points) * p.pow(combo.length, 1.4))
 
   scoreTexts.push({
     string: score.text,
-    position: p.createVector(p.width * 0.5, p.height * 0.369),
-    velocity: p.createVector(p.random(-2, 2), p.random(-10, -20))
+    position: p.createVector(p.width * 0.5, p.height * 0.5),
+    velocity: p.createVector(p.random(-2, 2), p.random(-10, -20)),
+    color: score == SCORE_VALUES[0] ? "random" : (score == SCORE_VALUES[1] || score == SCORE_VALUES[2]) ? getRandomBrightColour() : undefined,
   })
+
+  screenShake += combo.length
 
   if (
     combo.length === 3
@@ -236,21 +323,21 @@ function submitScore(p: p5, delta: number) {
 
       scoreTexts.push({
         string: `${combo.length}x Combo!!`,
-        position: p.createVector(p.width - 150, p.height * 0.369),
-        velocity: p.createVector(p.random(-2, 2), p.random(-15, -26)),
+        position: p.createVector(p.width * 0.5, 100),
+        velocity: p.createVector(p.random(2, 12), p.random(15, 26)),
         color: combo.length > 4 ? getRandomBrightColour() : undefined,
         comboLength: combo.length
       })
 
-    }, 100)
+      screenShake += p.pow(combo.length, 2)
+
+    }, 400)
 
   }
 
 }
 
-function getRandomBrightColour() {
-
-  const variance = 200
+function getRandomBrightColour(variance = 200) {
 
   let pigment = variance * 3
   const colour = [255 - variance, 255 - variance, 255 - variance]
@@ -273,7 +360,7 @@ function processScoreTexts() {
     scoreText.velocity.mult(0.9)
 
     if (scoreText.velocity.magSq() < 0.11) {
-      scoreTexts.splice(i)
+      scoreTexts.splice(i, 1)
     }
   }
 
@@ -287,9 +374,9 @@ function drawScoreTexts(p: p5) {
   p.textStyle(p.BOLDITALIC)
 
   for (const { string, position, color, comboLength } of scoreTexts) {
-    p.fill(color ?? palette.scoreText)
+    p.fill(color === "random" ? getRandomBrightColour() : color ?? palette.scoreText)
     if (comboLength) {
-      p.strokeWeight(1)
+      p.strokeWeight(2)
       if (comboLength > 6) {
         p.fill(getRandomBrightColour())
       }
